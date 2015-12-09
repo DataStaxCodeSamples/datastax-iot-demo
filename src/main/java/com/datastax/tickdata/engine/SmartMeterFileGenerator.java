@@ -59,8 +59,8 @@ public class SmartMeterFileGenerator implements Iterator<SmartMeterReadingFile> 
 		
 		for (int i=0; i < 48; i++){
 			
-			readings.put(today.getMinuteOfDay()/30, lastMeterReading);						
 			double startValue = this.createRandomValue();
+			readings.put(today.getMinuteOfDay()/30, startValue);									
 			total += startValue;
 			
 			today = today.plusMinutes(30);			
