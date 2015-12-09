@@ -1,0 +1,1 @@
+drop keyspace datastax_iot_demo;
