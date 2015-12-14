@@ -28,7 +28,7 @@ public class Aggregate {
 		String contactPointsStr = PropertyHelper.getProperty("contactPoints", "localhost");
 		String noOfThreadsStr = PropertyHelper.getProperty("noOfThreads", "5");
 		
-		Integer noOfCustomers = Integer.parseInt(PropertyHelper.getProperty("noOfCustomers", "10"));
+		Integer noOfCustomers = Integer.parseInt(PropertyHelper.getProperty("noOfCustomers", "100"));
 		Integer noOfDays= Integer.parseInt(PropertyHelper.getProperty("noOfDays", "180"));
 		
 		SmartMeterReadingDao dao = new SmartMeterReadingDao(contactPointsStr.split(","));		
@@ -61,6 +61,7 @@ public class Aggregate {
 //		logger.info(dao.selectMeterNosForBillingCycle(3).toString());		
 		
 		timer.end();
+		logger.info("Data Aggregation took " + timer.getTimeTakenSeconds() + " secs for " + noOfCustomers +" customers and " +noOfDays+ " days.");
 
 		ThreadUtils.shutdown(tasks, executor);
 		System.exit(0);
@@ -93,8 +94,6 @@ public class Aggregate {
 					}
 				}				
 			}	
-			
-			logger.info("Finished");
 		}
 		@Override
 		public void shutdown() {
