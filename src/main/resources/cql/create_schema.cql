@@ -3,30 +3,33 @@ create keyspace if not exists datastax_iot_demo WITH replication = {'class': 'Si
 use datastax_iot_demo; 
 
 create table if not exists smart_meter (
-	meter_id text,
+	meter_id int,
 	date timestamp,
-	readings text, 
+	readings double, 
 	status varchar, 
 	units varchar,
 	primary key (meter_id, date)
-); 
+) WITH CLUSTERING ORDER BY(date desc); 
 
 create table if not exists smart_meter_reading (
-	meter_id text,
+	meter_id int,
 	date timestamp,
 	source_id text,
 	readings text,
 	PRIMARY KEY(meter_id, date)
-);
+) WITH CLUSTERING ORDER BY(date desc); 
 
 create table if not exists smart_meter_reading_aggregates (
-	meter_id text,
+	meter_id int,
 	date timestamp,
 	aggregatetype text,
 	source_id text,
-	readings text,
+	double text,
 	PRIMARY KEY((meter_id, aggregatetype), date)
-);
+) WITH CLUSTERING ORDER BY(date desc); 
 	
-	
-
+create table if not exists billing_cycle(
+	billing_cycle int,
+	meter_id int,
+	PRIMARY KEY (billing_cycle, meter_id)
+);	
