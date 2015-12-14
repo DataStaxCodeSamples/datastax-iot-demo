@@ -1,23 +1,24 @@
 package com.datastax.smartmeter;
 
-import java.util.Date;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.datastax.demo.utils.KillableRunner;
 import com.datastax.demo.utils.PropertyHelper;
+import com.datastax.demo.utils.ThreadUtils;
 import com.datastax.demo.utils.Timer;
-import com.datastax.smartmeter.BillingCycleProcessor.SmartMeterReadingAggregator;
 import com.datastax.smartmeter.dao.SmartMeterReadingDao;
-import com.datastax.smartmeter.engine.SmartMeterFileGenerator;
+import com.datastax.smartmeter.model.AggregateType;
 import com.datastax.smartmeter.model.SmartMeterReading;
-import com.datastax.smartmeter.model.SmartMeterReadingFile;
+import com.datastax.smartmeter.model.SmartMeterReadingAgg;
+import com.datastax.smartmeter.utils.SmartMeterUtils;
 
 public class Aggregate {
 	private static Logger logger = LoggerFactory.getLogger(Aggregate.class);
@@ -27,65 +28,80 @@ public class Aggregate {
 		String contactPointsStr = PropertyHelper.getProperty("contactPoints", "localhost");
 		String noOfThreadsStr = PropertyHelper.getProperty("noOfThreads", "5");
 		
-		Integer noOfCustomers = Integer.parseInt(PropertyHelper.getProperty("noOfCustomers", "100000"));
-		Integer noOfDays= Integer.parseInt(PropertyHelper.getProperty("noOfDays", "7"));
+		Integer noOfCustomers = Integer.parseInt(PropertyHelper.getProperty("noOfCustomers", "10"));
+		Integer noOfDays= Integer.parseInt(PropertyHelper.getProperty("noOfDays", "180"));
 		
 		SmartMeterReadingDao dao = new SmartMeterReadingDao(contactPointsStr.split(","));		
 
 		int noOfThreads = Integer.parseInt(noOfThreadsStr);
 		
 		//Create shared queue 
-		BlockingQueue<List<SmartMeterReading>> queueMeterReadings = new ArrayBlockingQueue<List<SmartMeterReading>>(1000);		
+		BlockingQueue<List<SmartMeterReading>> queueMeterReadings = new ArrayBlockingQueue<List<SmartMeterReading>>(1000);
+		List<KillableRunner> tasks = new ArrayList<>();
 		
 		//Executor for Threads
 		ExecutorService executor = Executors.newFixedThreadPool(noOfThreads);
 		Timer timer = new Timer();
 		timer.start();
 		
-//		for (int i = 0; i < noOfThreads; i++) {
-//			executor.execute(new SmartMeterReadingAggregator(dao, queueMeterReadings));
-//		}
+		for (int i = 0; i < noOfThreads; i++) {
+			KillableRunner task = new SmartMeterReadingAggregator(dao, queueMeterReadings);
+			executor.execute(task);	
+			tasks.add(task);
+		}
+				
+		//Aggregate by date
+		for (int i=0; i < noOfCustomers; i ++){			
+			queueMeterReadings.add(dao.selectSmartMeterReadings(i));
+		}
 								
-		logger.info(dao.selectSmartMeter(1).toString());		
-		logger.info(dao.selectSmartMeterReadings(1).toString());				
-		logger.info(dao.selectSmartMeterReadings(1, DateTime.now().minusDays(10).toDate(), DateTime.now().toDate()).toString());				
-		logger.info(dao.selectMeterNosForBillingCycle(3).toString());		
-		
-		while(!queueMeterReadings.isEmpty() ){
-			sleep(1);
-		}		
+//		logger.info(dao.selectSmartMeter(1).toString());		
+//		logger.info(dao.selectSmartMeterReadings(1).toString());				
+//		logger.info(dao.selectSmartMeterReadings(1, DateTime.now().minusDays(10).toDate(), DateTime.now().toDate()).toString());				
+//		logger.info(dao.selectMeterNosForBillingCycle(3).toString());		
 		
 		timer.end();
-		
+
+		ThreadUtils.shutdown(tasks, executor);
 		System.exit(0);
 	}
 	
-	class SmartMeterReadingWriter implements Runnable {
+	
+	class SmartMeterReadingAggregator implements KillableRunner {
 
+		private volatile boolean shutdown = false;
 		private SmartMeterReadingDao dao;
-		private BlockingQueue<SmartMeterReadingFile> queue;
+		private BlockingQueue<List<SmartMeterReading>> queue;
 
-		public SmartMeterReadingWriter(SmartMeterReadingDao dao, BlockingQueue<SmartMeterReadingFile> queue) {
+		public SmartMeterReadingAggregator(SmartMeterReadingDao dao, BlockingQueue<List<SmartMeterReading>> queue) {
 			this.dao = dao;
 			this.queue = queue;
 		}
 
 		@Override
 		public void run() {
-			SmartMeterReadingFile smartMeterReadingFile;
-			while(true){				
-				smartMeterReadingFile = queue.poll(); 
+			List<SmartMeterReading> readings;
+			while(!shutdown){				
+				readings = queue.poll(); 
 				
-				if (smartMeterReadingFile!=null){
+				if (readings!=null){
 					try {
-						this.dao.insertMeterReadings(smartMeterReadingFile.getSmartMeterReading());
+						List<SmartMeterReadingAgg> aggregatePerReading = SmartMeterUtils.aggregatePerReading(AggregateType.DAY, readings);						
+						this.dao.insertMeterReadingsAgg(aggregatePerReading);
 					} catch (Exception e) {
 						e.printStackTrace();
 					}
 				}				
-			}				
+			}	
+			
+			logger.info("Finished");
 		}
+		@Override
+		public void shutdown() {
+	        shutdown = true;
+	    }
 	}
+
 	
 	private void sleep(int seconds) {
 		try {

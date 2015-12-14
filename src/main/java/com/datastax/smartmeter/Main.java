@@ -1,5 +1,6 @@
 package com.datastax.smartmeter;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -11,7 +12,9 @@ import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.datastax.demo.utils.KillableRunner;
 import com.datastax.demo.utils.PropertyHelper;
+import com.datastax.demo.utils.ThreadUtils;
 import com.datastax.demo.utils.Timer;
 import com.datastax.smartmeter.dao.SmartMeterReadingDao;
 import com.datastax.smartmeter.engine.SmartMeterFileGenerator;
@@ -35,6 +38,7 @@ public class Main {
 		int noOfThreads = Integer.parseInt(noOfThreadsStr);
 		//Create shared queue 
 		BlockingQueue<SmartMeterReadingFile> queue = new ArrayBlockingQueue<SmartMeterReadingFile>(1000);
+		List<KillableRunner> tasks = new ArrayList<>();
 		
 		//Executor for Threads
 		ExecutorService executor = Executors.newFixedThreadPool(noOfThreads);
@@ -42,6 +46,7 @@ public class Main {
 		timer.start();
 		
 		DateTime startTime = new DateTime().minusDays((noOfDays-1)).withMillisOfDay(0);
+		
 		for (int i =0; i < noOfCustomers; i ++){
 			dao.insertMeterDetails(new SmartMeter(i, startTime.toDate(), new Double(Math.random() * 10000).intValue(), "ON", "KW"));
 			
@@ -50,7 +55,9 @@ public class Main {
 		}
 			
 		for (int i = 0; i < noOfThreads; i++) {
-			executor.execute(new SmartMeterReadingWriter(dao, queue));
+			
+			KillableRunner task = new SmartMeterReadingWriter(dao, queue);
+			executor.execute(task);
 		}
 				
 		//Start the tick generator
@@ -65,19 +72,16 @@ public class Main {
 				e.printStackTrace();
 			}
 		}
-		
-		while(!queue.isEmpty() ){
-			sleep(1);
-		}		
-		
 		timer.end();
 		logger.info("Data Loading took " + timer.getTimeTakenSeconds() + " secs for " + noOfCustomers +" customers and " +noOfDays+ " days.");
-		
+
+		ThreadUtils.shutdown(tasks, executor);
 		System.exit(0);
 	}
 	
-	class SmartMeterReadingWriter implements Runnable {
+	class SmartMeterReadingWriter implements KillableRunner {
 
+		private volatile boolean shutdown = false;
 		private SmartMeterReadingDao dao;
 		private BlockingQueue<SmartMeterReadingFile> queue;
 
@@ -89,7 +93,7 @@ public class Main {
 		@Override
 		public void run() {
 			SmartMeterReadingFile smartMeterReadingFile;
-			while(true){				
+			while(!shutdown){				
 				smartMeterReadingFile = queue.poll(); 
 				
 				if (smartMeterReadingFile!=null){
@@ -101,6 +105,11 @@ public class Main {
 				}				
 			}				
 		}
+		
+		@Override
+	    public void shutdown() {
+	        shutdown = true;
+	    }
 	}
 	
 	private List<Integer> billingCycles = Arrays.asList(1,7,15,23);

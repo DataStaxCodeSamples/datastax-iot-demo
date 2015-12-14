@@ -1,17 +1,21 @@
 package com.datastax.smartmeter;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.datastax.demo.utils.KillableRunner;
 import com.datastax.demo.utils.PropertyHelper;
+import com.datastax.demo.utils.ThreadUtils;
 import com.datastax.demo.utils.Timer;
 import com.datastax.smartmeter.dao.SmartMeterReadingDao;
 import com.datastax.smartmeter.model.SmartMeterReading;
@@ -30,7 +34,8 @@ public class BillingCycleProcessor {
 		int noOfThreads = Integer.parseInt(noOfThreadsStr);
 		
 		//Create shared queue 
-		BlockingQueue<List<SmartMeterReading>> queueMeterReadings = new ArrayBlockingQueue<List<SmartMeterReading>>(1000);		
+		BlockingQueue<List<SmartMeterReading>> queueMeterReadings = new ArrayBlockingQueue<List<SmartMeterReading>>(1000);
+		List<KillableRunner> tasks = new ArrayList<>();
 		
 		//Executor for Threads
 		ExecutorService executor = Executors.newFixedThreadPool(noOfThreads);
@@ -38,25 +43,23 @@ public class BillingCycleProcessor {
 		timer.start();
 		
 		for (int i = 0; i < noOfThreads; i++) {
-			executor.execute(new SmartMeterReadingAggregator(dao, queueMeterReadings));
+			KillableRunner task = new SmartMeterReadingAggregator(dao, queueMeterReadings);
+			executor.execute(task);
+			tasks.add(task);
 		}
 		
 		Date from = DateTime.now().withMillisOfDay(0).withDayOfMonth(billingCycle).minusMonths(1).toDate(); 
 		Date to = DateTime.now().withMillisOfDay(0).withDayOfMonth(billingCycle).toDate();
 		
 		dao.selectMeterNosForBillingCycle(billingCycle, queueMeterReadings, from, to);
-		
-		while(!queueMeterReadings.isEmpty() ){
-			sleep(1);
-		}		
-		
-		timer.end();
-		
+				
+		ThreadUtils.shutdown(tasks, executor);
 		System.exit(0);
 	}
 	
-	class SmartMeterReadingAggregator implements Runnable {
+	class SmartMeterReadingAggregator implements KillableRunner {
 
+		private volatile boolean shutdown = false;
 		private SmartMeterReadingDao dao;
 		private BlockingQueue<List<SmartMeterReading>> queue;
 
@@ -68,7 +71,7 @@ public class BillingCycleProcessor {
 		@Override
 		public void run() {
 			List<SmartMeterReading> readings;
-			while(true){				
+			while(!shutdown){				
 				readings = queue.poll(); 
 				
 				if (readings!=null){
@@ -82,6 +85,11 @@ public class BillingCycleProcessor {
 				}				
 			}				
 		}
+		
+		@Override
+		public void shutdown() {
+	        shutdown = true;
+	    }
 	}
 
 	private void sleep(int seconds) {

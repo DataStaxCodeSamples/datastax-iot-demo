@@ -24,6 +24,7 @@ import com.datastax.driver.core.policies.TokenAwarePolicy;
 import com.datastax.smartmeter.model.BillingCycle;
 import com.datastax.smartmeter.model.SmartMeter;
 import com.datastax.smartmeter.model.SmartMeterReading;
+import com.datastax.smartmeter.model.SmartMeterReadingAgg;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,13 +43,13 @@ public class SmartMeterReadingDao {
 	private static final String INSERT_INTO_BC = "Insert into " + billingCycle + " (billing_cycle, meter_id) values (?,?);";
 	private static final String INSERT_INTO_METER = "Insert into " + smartMeter + " (meter_id, date, readings, status, units) values (?,?,?,?,?);";
 	private static final String INSERT_INTO_READINGS = "Insert into " + smartMeterReading + " (meter_id, date, source_id, readings) values (?,?,?,?);";
-	private static final String INSERT_INTO_READINGS_AGG = "Insert into " + smartMeterReadingAgg + " (meter_id, date, aggregatetype, source_id) values (?,?,?,?);";
+	private static final String INSERT_INTO_READINGS_AGG = "Insert into " + smartMeterReadingAgg + " (meter_id, date, aggregatetype, source_id, readings) values (?,?,?,?,?);";
 
 	private static final String SELECT_FROM_BC = "select billing_cycle, meter_id from " + billingCycle + " where billing_cycle = ?";
 	private static final String SELECT_FROM_METER = "select meter_id, date, readings, status, units from " + smartMeter + " where meter_id = ? limit 1";
-	private static final String SELECT_FROM_READINGS = "select meter_id, date, source_id, readings from " + smartMeterReading + " where meter_id = ?";
+	private static final String SELECT_FROM_READINGS = "select meter_id, date, source_id, readings from " + smartMeterReading + " where meter_id = ? limit ?";
 	private static final String SELECT_FROM_READINGS_BY_DATE = "select meter_id, date, source_id, readings from " + smartMeterReading + " where meter_id = ? and date > ? and date <= ?";
-	private static final String SELECT_FROM_READINGS_AGG = "select meter_id, aggregatetype, date, source_id, readings from " + smartMeterReadingAgg + " where meter_id = ? and aggregatetype = ?";		
+	private static final String SELECT_FROM_READINGS_AGG = "select meter_id, aggregatetype, date, source_id, readings from " + smartMeterReadingAgg + " where meter_id = ? and aggregatetype = ? limit ?";		
 	
 	private PreparedStatement insertStmtBillingCylce;
 	private PreparedStatement insertStmtMeter;
@@ -99,8 +100,12 @@ public class SmartMeterReadingDao {
 	}
 	
 	public List<SmartMeterReading> selectSmartMeterReadings(int meterNo){
+		return this.selectSmartMeterReadings(meterNo, 10000);
+	}
+
+	public List<SmartMeterReading> selectSmartMeterReadings(int meterNo, int days){
 		BoundStatement bs = new BoundStatement(selectStmtReading);
-		ResultSet resultSet = session.execute(bs.bind(meterNo));
+		ResultSet resultSet = session.execute(bs.bind(meterNo, days));
 		
 		List <SmartMeterReading> readings = new ArrayList<>();
 		
@@ -189,11 +194,54 @@ public class SmartMeterReadingDao {
 		session.execute(bs.bind(reading.getId(), reading.getDate(), reading.getSourceId(), getJsonReadings(reading)));
 	}
 
-	public void insertMeterReadings(SmartMeterReading reading, String aggregateType, double value){
+	public void insertMeterReadingsAgg(SmartMeterReadingAgg readingAggregate){
 		
 		BoundStatement bs = new BoundStatement(insertStmtReadingAgg);
-		session.execute(bs.bind(reading.getId(), reading.getDate(), aggregateType, reading.getSourceId(), value));
+		session.execute(bs.bind(readingAggregate.getId(), readingAggregate.getDate(), readingAggregate.getAggregatetype(), 
+				readingAggregate.getSourceId(), readingAggregate.getValue()));
 	}
+
+	public void insertMeterReadingsAgg(List<SmartMeterReadingAgg> readingAggregates){
+		
+		BoundStatement bs;
+		
+		AsyncWriterWrapper wrapper = new AsyncWriterWrapper();
+		
+		for (SmartMeterReadingAgg readingAggregate : readingAggregates){
+			
+			bs = new BoundStatement(insertStmtReadingAgg);
+			wrapper.addStatement(bs.bind(readingAggregate.getId(), readingAggregate.getDate(), readingAggregate.getAggregatetype(), 
+				readingAggregate.getSourceId(), readingAggregate.getValue()));
+		}
+		wrapper.executeAsync(session);
+		logger.info("Processed : " + wrapper.getStatementCounter() + " statements");
+	}
+
+	
+	public List<SmartMeterReadingAgg> selectSmartMeterReadingsAgg(int meterNo, String aggregateType){
+		return this.selectSmartMeterReadingsAgg(meterNo, aggregateType, 10000);
+	}
+	
+	public List<SmartMeterReadingAgg> selectSmartMeterReadingsAgg(int meterNo, String aggregateType, int limit){
+		BoundStatement bs = new BoundStatement(selectStmtReadingAgg);
+		ResultSet resultSet = session.execute(bs.bind(meterNo, aggregateType, limit));
+		
+		List <SmartMeterReadingAgg> readings = new ArrayList<>();
+		
+		List<Row> rows = resultSet.all();
+		if (rows==null){
+			throw new RuntimeException("Smart meter " + meterNo + " and aggregate type " + aggregateType + " not available.");
+		}else{
+			
+			for (Row row : rows){
+				readings.add(new SmartMeterReadingAgg(row.getInt("meter_id"), row.getString("aggregatetype"), row.getTimestamp("date"),  
+					row.getString("source_id"), row.getDouble("readings")));
+			}
+			
+			return readings;
+		}
+	}
+
 
 	private String getJsonReadings(SmartMeterReading reading) {
 		try {
@@ -212,6 +260,4 @@ public class SmartMeterReadingDao {
 			throw new RuntimeException (e.getMessage() + " - JSON Readings cannot be turned into map - " + readings );
 		}
 	}
-	
-	
 }

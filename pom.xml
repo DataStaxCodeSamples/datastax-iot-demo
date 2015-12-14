@@ -3,7 +3,7 @@
 		http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>com.datastax.demo</groupId>
+	<groupId>com.datastax.smartmeter</groupId>
 	<artifactId>datastax-iot-demo</artifactId>
 	<version>0.1-SNAPSHOT</version>
 	<packaging>jar</packaging>
