@@ -42,7 +42,7 @@ public class SmartMeterReadingDao {
 	private static final String INSERT_INTO_BC = "Insert into " + billingCycle + " (billing_cycle, meter_id) values (?,?);";
 	private static final String INSERT_INTO_METER = "Insert into " + smartMeter + " (meter_id, date, readings, status, units) values (?,?,?,?,?);";
 	private static final String INSERT_INTO_READINGS = "Insert into " + smartMeterReading + " (meter_id, date, source_id, readings) values (?,?,?,?);";
-	private static final String INSERT_INTO_READINGS_AGG = "Insert into " + smartMeterReadingAgg + " (meter_id, date, aggregatetype, source_id, readings) values (?,?,?,?,?);";
+	private static final String INSERT_INTO_READINGS_AGG = "Insert into " + smartMeterReadingAgg + " (meter_id, date, aggregatetype, source_id) values (?,?,?,?);";
 
 	private static final String SELECT_FROM_BC = "select billing_cycle, meter_id from " + billingCycle + " where billing_cycle = ?";
 	private static final String SELECT_FROM_METER = "select meter_id, date, readings, status, units from " + smartMeter + " where meter_id = ? limit 1";

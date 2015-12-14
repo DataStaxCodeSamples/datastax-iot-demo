@@ -24,7 +24,7 @@ create table if not exists smart_meter_reading_aggregates (
 	date timestamp,
 	aggregatetype text,
 	source_id text,
-	double text,
+	readings double,
 	PRIMARY KEY((meter_id, aggregatetype), date)
 ) WITH CLUSTERING ORDER BY(date desc); 
 	

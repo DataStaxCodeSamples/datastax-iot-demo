@@ -71,7 +71,7 @@ public class Main {
 		}		
 		
 		timer.end();
-		logger.info("Data Loading took " + timer.getTimeTakenSeconds() + " secs");
+		logger.info("Data Loading took " + timer.getTimeTakenSeconds() + " secs for " + noOfCustomers +" customers and " +noOfDays+ " days.");
 		
 		System.exit(0);
 	}

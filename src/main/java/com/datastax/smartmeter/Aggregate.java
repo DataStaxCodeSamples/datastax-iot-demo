@@ -42,9 +42,9 @@ public class Aggregate {
 		Timer timer = new Timer();
 		timer.start();
 		
-		for (int i = 0; i < noOfThreads; i++) {
-			executor.execute(new SmartMeterReadingAggregator(dao, queueMeterReadings));
-		}
+//		for (int i = 0; i < noOfThreads; i++) {
+//			executor.execute(new SmartMeterReadingAggregator(dao, queueMeterReadings));
+//		}
 								
 		logger.info(dao.selectSmartMeter(1).toString());		
 		logger.info(dao.selectSmartMeterReadings(1).toString());				
